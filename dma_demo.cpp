@@ -88,7 +88,7 @@ void init_adc(){
 		false // doesnt shift down to 8 bytes
 	);
 
-	adc_set_clkdiv(1E20); // arbitrary large value to be slow enough
+	adc_set_clkdiv(96.0f); // arbitrary large value to be slow enough
 
 	// enable interrupt
 
@@ -107,7 +107,7 @@ int main(){
 	// init_pwm();
 	init_adc();
 
-	if(!dac.begin(MCP4725_PICO::MCP4725A0_Addr_A00, i2c, 200, SDA, SCL, timeout)){
+	if(!dac.begin(MCP4725_PICO::MCP4725A0_Addr_A00, i2c, 400, SDA, SCL, timeout)){
 		printf("Initialization failed\n");
 		return 1;
 	}
@@ -128,9 +128,9 @@ int main(){
 			int buffer_number = buffer;
 			buffer = !buffer;
 
-			for (int i = 0; i < SAMPLE_SIZE; i++){
-				sum += sample_buffer[buffer_number][i];
-			}
+			// for (int i = 0; i < SAMPLE_SIZE; i++){
+			// 	sum += sample_buffer[buffer_number][i];
+			// }
 			// printf("Average ADC value: %u\n", sample_buffer[buffer_number][127]);
 			dac.setInputCode(sample_buffer[buffer_number][127], MCP4725_PICO::MCP4725_FastMode, MCP4725_PICO::MCP4725_PowerDown_Off);
 			// toggle gpio indicator to measure sampling rate
