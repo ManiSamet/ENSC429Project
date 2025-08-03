@@ -16,7 +16,10 @@ pico_sdk_init()
 add_executable(dma_demo
     dma_demo.cpp
     mcp4725.cpp
-    audio_i2s.c        # Your local copy of audio_i2s.c
+    audio_i2s.c        
+	/Users/manisamet/school/pico_audio_i2s_32b/src/pico_audio_32b/audio.cpp
+	/Users/manisamet/school/pico-extras/src/common/pico_util_buffer/buffer.c
+	
 )
 
 # --------------------------------------------------------
@@ -42,6 +45,7 @@ target_link_libraries(
     hardware_dma
     hardware_pio
     hardware_irq
+    pico_multicore
 )
 
 # --------------------------------------------------------

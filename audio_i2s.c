@@ -23,7 +23,7 @@
 
 #define PIO_CLK_DIV_FRAC
 
-//#define CORE1_PROCESS_I2S_CALLBACK  // Multi-Core Processing Mode (Experimentally Single-Core seems better)
+// #define CORE1_PROCESS_I2S_CALLBACK  // Multi-Core Processing Mode (Experimentally Single-Core seems better)
 //#define WATCH_DMA_TRANSFER_INTERVAL // Activate only for analysis because of watch overhead
 //#define WATCH_PIO_SM_TX_FIFO_LEVEL  // Activate only for analysis because of watch overhead
 

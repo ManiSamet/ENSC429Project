@@ -1,6 +1,12 @@
 {
     "files.associations": {
         "stdlib.h": "c",
-        "adc.h": "c"
+        "adc.h": "c",
+        "regex": "cpp",
+        "vector": "cpp",
+        "cstring": "cpp",
+        "cassert": "c",
+        "optional": "c",
+        "mutex": "c"
     }
 }
