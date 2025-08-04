@@ -23,7 +23,22 @@
 
 static const uint32_t PIN_DCDC_PSM_CTRL = 23;
 
-#define ADC_SAMPLE_SIZE 256
+#define ONBOARD_LED 25
+#define ONBOARD_LED_SLICE 4
+#define ONBOARD_LED_CHANNEL PWM_CHAN_B
+
+#define EXTERNAL_LED 22
+#define EXTERNAL_LED_SLICE 3 // pg 524 rp2040 datasheet
+#define EXTERNAL_LED_CHANNEL PWM_CHAN_A
+
+#define INDICATOR EXTERNAL_LED
+#define INDICATOR_SLICE EXTERNAL_LED_SLICE
+
+#define OUTPUT_LED ONBOARD_LED
+#define OUTPUT_SLICE ONBOARD_LED_SLICE
+#define OUTPUT_CHANNEL ONBOARD_LED_CHANNEL
+
+#define ADC_SAMPLE_SIZE 2048
 #define ADC_PIN 27
 #define ADC_CHANNEL 1
 
@@ -81,6 +96,8 @@ void i2s_callback_func()
 {
     if (decode_flg && adc_flag) {
 		adc_flag = false;
+		gpio_xor_mask(1 << EXTERNAL_LED);
+		// gpio_put(ONBOARD_LED, 0);
         decode();
     }
 }
@@ -96,12 +113,13 @@ void init_adc(){
 	adc_fifo_setup( 
 		true, // enable FIFO
 		false, // disable DMA
-		1, // trigger irq on one sample
+		2049, // trigger irq on 8 samples
 		false, // disable error sample flag
 		false // doesnt shift down to 8 bytes
 	);
 
-	adc_set_clkdiv((48e6 / 44100) - 1);  
+	// adc_set_clkdiv((48e6 / 44100) - 1);  
+	adc_set_clkdiv(15e6);
 
 	// enable interrupt
 
@@ -246,12 +264,20 @@ audio_buffer_pool_t *i2s_audio_init(uint32_t sample_freq)
     decode_flg = true;
     return producer_pool;
 }
+void init_led(){
+	gpio_init(EXTERNAL_LED);
+	gpio_set_dir(EXTERNAL_LED, GPIO_OUT);
+
+	gpio_init(ONBOARD_LED);
+	gpio_set_dir(ONBOARD_LED, GPIO_OUT);
+}
 
 int main() {
 
     stdio_init_all();
+	init_led();
     init_adc();
-
+	adc_run(true);
     // Set PLL_USB 96MHz
     pll_init(pll_usb, 1, 1536 * MHZ, 4, 4);
     clock_configure(clk_usb,
@@ -265,12 +291,12 @@ int main() {
         CLOCKS_CLK_SYS_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
         96 * MHZ,
         96 * MHZ);
-    // CLK peri is clocked from clk_sys so need to change clk_peri's freq
-    clock_configure(clk_peri,
-        0,
-        CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLK_SYS,
-        96 * MHZ,
-        96 * MHZ);
+    // // CLK peri is clocked from clk_sys so need to change clk_peri's freq
+    // clock_configure(clk_peri,
+    //     0,
+    //     CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLK_SYS,
+    //     96 * MHZ,
+    //     96 * MHZ);
     // Reinit uart now that clk_peri has changed
     stdio_init_all();
 
@@ -286,8 +312,9 @@ int main() {
     // }
 
     ap = i2s_audio_init(41000); //TODO: Possible change to fix
-	adc_run(true);
+	// gpio_xor_mask(1 << ONBOARD_LED);
     while (true) {
+		// printf("TEST\n");
     }
     return 0;
 }
@@ -307,6 +334,7 @@ int main() {
 void decode(){
 	   audio_buffer_t *buffer = take_audio_buffer(ap, false);
     if (buffer == NULL) return;
+		// gpio_xor_mask(1 << ONBOARD_LED);
 
     int16_t *samples = (int16_t *) buffer->buffer->bytes;
 
@@ -380,15 +408,21 @@ void decode(){
 // }
 void adc_callback(){
 
-	uint16_t raw = adc_fifo_get();
-    sample_buffer[buffer][index++] = raw;
+    // while (!adc_fifo_is_empty()) { 
 
-    if (index >= ADC_SAMPLE_SIZE) {
-        buffer_full[buffer] = true;   // mark current buffer as ready
-        buffer = !buffer;             // switch to other buffer
-        index = 0;
-    }
-
+        uint16_t raw = adc_fifo_get();
+		adc_fifo_drain(); // resets event
+        sample_buffer[buffer][index++] = raw;
+		printf("%d\n", raw);
+        if (index >= ADC_SAMPLE_SIZE) {
+            buffer_full[buffer] = true;
+            buffer = !buffer;
+            index = 0;
+            gpio_xor_mask(1 << ONBOARD_LED);
+			// gpio_put(ONBOARD_LED, 1);
+			adc_flag = true;
+        }
+    // }
     irq_clear(ADC_IRQ_FIFO);
 
 	// uint16_t raw_data = adc_fifo_get();
@@ -396,14 +430,8 @@ void adc_callback(){
 	// static uint8_t index = 0;
 	
 
-	// if (switch_buffers){
-
-	// 	sample_buffer[buffer][index] = raw_data;
-	// 	index++;
-	// }
-
 	// if (index == ADC_SAMPLE_SIZE){
-	// 	index = 0;
+	// 	index = 0;			
 	// 	adc_flag = true;
 	// 	switch_buffers = false;
 	// 	// gpio_xor_mask(1 << INDICATOR); // toggle indicator
