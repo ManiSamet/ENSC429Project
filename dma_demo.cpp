@@ -20,7 +20,7 @@
 #define SINE_WAVE_TABLE_LEN 2048
 #define SAMPLES_PER_BUFFER 1156 // Samples / channel
 
-void sine_wave();
+// void sine_wave();
 
 static const uint32_t PIN_DCDC_PSM_CTRL = 23;
 
@@ -35,17 +35,12 @@ static const uint32_t PIN_DCDC_PSM_CTRL = 23;
 #define INDICATOR EXTERNAL_LED
 #define INDICATOR_SLICE EXTERNAL_LED_SLICE
 
-#define OUTPUT_LED ONBOARD_LED
-#define OUTPUT_SLICE ONBOARD_LED_SLICE
-#define OUTPUT_CHANNEL ONBOARD_LED_CHANNEL
-
+/* ADC Interrupt variables*/
 #define ADC_SAMPLE_SIZE 64
 #define ADC_PIN 27
 #define ADC_CHANNEL 1
-
-/* ADC Interrupt variables*/
-volatile uint16_t sample_buffer[2][ADC_SAMPLE_SIZE];
 volatile bool adc_flag = false;
+volatile uint16_t sample_buffer[2][ADC_SAMPLE_SIZE];
 volatile uint8_t buffer = 0;
 static uint16_t index = 0;
 volatile bool buffer_full[2] = {false, false};
@@ -59,9 +54,9 @@ static constexpr int32_t DAC_ZERO = 1;
 #define audio_pio __CONCAT(pio, PICO_AUDIO_I2S_PIO)
 
 static audio_format_t audio_format = {
-    // .sample_freq = 20000,
-    .sample_freq = 44100,
-    .pcm_format = AUDIO_PCM_FORMAT_S16,
+    // .sample_freq = 21000,
+    .sample_freq = 16000,
+    .pcm_format = AUDIO_PCM_FORMAT_S32,
     .channel_count = AUDIO_CHANNEL_STEREO
 };
 
@@ -86,10 +81,36 @@ uint32_t pos1 = 0;
 const uint32_t pos_max = 0x10000 * SINE_WAVE_TABLE_LEN;
 uint vol = 20;
 
+/*LMS Filter*/
+#define LMS_FILTER_WEIGHTS 500 //From presentation
+#define convergence_rate 0.02f
+float lms_weights[LMS_FILTER_WEIGHTS] = {0};
+float lms_buffer[LMS_FILTER_WEIGHTS] = {0};	
+
+
 void adc_callback();
 void decode();
 
- 
+float lms_filter(float input, float desired) {
+    for (int i = LMS_FILTER_WEIGHTS - 1; i > 0; i--) {
+        lms_buffer[i] = lms_buffer[i - 1];
+    }
+    lms_buffer[0] = input;
+
+    float output = 0.0f;
+    for (int i = 0; i < LMS_FILTER_WEIGHTS; i++) {
+        output += lms_weights[i] * lms_buffer[i];
+    }
+
+    float error = desired - output;
+    for (int i = 0; i < LMS_FILTER_WEIGHTS; i++) {
+        lms_weights[i] += convergence_rate * error * lms_buffer[i];
+    }
+
+    return output;
+}
+
+
 void init_adc(){
 
 	adc_init();
@@ -296,7 +317,7 @@ int main() {
         sine_wave_table[i] = 32767 * cosf(i * 2 * (float) (M_PI / SINE_WAVE_TABLE_LEN));
     }
 
-    ap = i2s_audio_init(41000); //TODO: Possible change to fix
+    ap = i2s_audio_init(16000); 
 	// gpio_xor_mask(1 << ONBOARD_LED);
     while (true) {
 		// printf("TEST\n");
@@ -311,39 +332,39 @@ int main() {
     return 0;
 }
 
-void sine_wave(){
-    audio_buffer_t *buffer = take_audio_buffer(ap, false);
-    if (buffer == NULL) { return; }
-    int32_t *samples = (int32_t *) buffer->buffer->bytes;
-    for (uint i = 0; i < buffer->max_sample_count; i++) {
+// void sine_wave(){
+//     audio_buffer_t *buffer = take_audio_buffer(ap, false);
+//     if (buffer == NULL) { return; }
+//     int32_t *samples = (int32_t *) buffer->buffer->bytes;
+//     for (uint i = 0; i < buffer->max_sample_count; i++) {
 
-		int32_t value0 = (vol * sine_wave_table[pos0 >> 16u]) << 8u;
-        int32_t value1 = (vol * sine_wave_table[pos1 >> 16u]) << 8u;
-        // use 32bit full scale
-        samples[i*2+0] = value0 + (value0 >> 16u);  // L
-        samples[i*2+1] = value1 + (value1 >> 16u);  // R
-        pos0 += step0;
-        pos1 += step1;
-        if (pos0 >= pos_max) pos0 -= pos_max;
-        if (pos1 >= pos_max) pos1 -= pos_max;
+// 		int32_t value0 = (vol * sine_wave_table[pos0 >> 16u]) << 8u;
+//         int32_t value1 = (vol * sine_wave_table[pos1 >> 16u]) << 8u;
+//         // use 32bit full scale
+//         samples[i*2+0] = value0 + (value0 >> 16u);  // L
+//         samples[i*2+1] = value1 + (value1 >> 16u);  // R
+//         pos0 += step0;
+//         pos1 += step1;
+//         if (pos0 >= pos_max) pos0 -= pos_max;
+//         if (pos1 >= pos_max) pos1 -= pos_max;
 
-		// int32_t centered = ((int32_t)(sample_buffer[buffer_number][i])-2048) << 20;
-		// int32_t centered = *(int32_t*)&sample_buffer[buffer_number][i];
+// 		// int32_t centered = ((int32_t)(sample_buffer[buffer_number][i])-2048) << 20;
+// 		// int32_t centered = *(int32_t*)&sample_buffer[buffer_number][i];
 
-        // int32_t value0 = (centered); //<< 8u;
-        // int32_t value1 = (centered); //<< 8u;
+//         // int32_t value0 = (centered); //<< 8u;
+//         // int32_t value1 = (centered); //<< 8u;
 
-        // // use 32bit full scale
-        // samples[i*2+0] = centered; //+ (value0 >> 16u);  // L
-        // samples[i*2+1] = centered; //+ (value1 >> 16u);  // R
-		// int32_t centered = ((int32_t)sample_buffer[buffer_number][i] - 2048) << 20;
-        // samples[i*2 + 0] = centered; // Left
-        // samples[i*2 + 1] = centered; // Right
-    }
-    buffer->sample_count = buffer->max_sample_count;
-    give_audio_buffer(ap, buffer);
+//         // // use 32bit full scale
+//         // samples[i*2+0] = centered; //+ (value0 >> 16u);  // L
+//         // samples[i*2+1] = centered; //+ (value1 >> 16u);  // R
+// 		// int32_t centered = ((int32_t)sample_buffer[buffer_number][i] - 2048) << 20;
+//         // samples[i*2 + 0] = centered; // Left
+//         // samples[i*2 + 1] = centered; // Right
+//     }
+//     buffer->sample_count = buffer->max_sample_count;
+//     give_audio_buffer(ap, buffer);
 
-}
+// }
 // void decode(){
 // 	   audio_buffer_t *buffer = take_audio_buffer(ap, false);
 //     if (buffer == NULL) return;
@@ -382,19 +403,35 @@ void decode()
     if (buffer == NULL) { return; }
     int32_t *samples = (int32_t *) buffer->buffer->bytes;
     for (uint i = 0; i < buffer->max_sample_count; i++) {
+
+        // Generate sine wave values
         int32_t value0 = (vol * sine_wave_table[pos0 >> 16u]) << 8u;
         int32_t value1 = (vol * sine_wave_table[pos1 >> 16u]) << 8u;
-        // use 32bit full scale
-        samples[i*2+0] = value0 + (value0 >> 16u);  // L
-        samples[i*2+1] = value1 + (value1 >> 16u);  // R
+
+        // Convert to float
+        float input_samp = (float)value0;    
+        float desired_samp = (float)value1;   
+
+        // LMS filter output
+        float filtered_samp = lms_filter(input_samp, desired_samp);
+
+
+        float cancelled_samp = input_samp - filtered_samp;
+
+
+        int32_t output_value = (int32_t)cancelled_samp;
+        samples[i*2+0] = output_value + (output_value >> 16u);  //L
+        samples[i*2+1] = value1 + (value1 >> 16u); //R
+
+
         pos0 += step0;
         pos1 += step1;
         if (pos0 >= pos_max) pos0 -= pos_max;
         if (pos1 >= pos_max) pos1 -= pos_max;
     }
+
     buffer->sample_count = buffer->max_sample_count;
     give_audio_buffer(ap, buffer);
-    return;
 }
 
 void adc_callback(){
